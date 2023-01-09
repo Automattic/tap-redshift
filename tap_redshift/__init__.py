@@ -535,7 +535,7 @@ def main_impl():
     connection = open_connection(args.config)
     db_schema = args.config.get('schema', 'public')
     db_name = args.config.get('dbname', 'dev')
-    limit = args.config.get('limit_rows_per_batch', None)
+    limit = args.config.get('limit_rows_per_batch')
     if args.discover:
         do_discover(connection, db_name, db_schema)
     elif args.catalog:
