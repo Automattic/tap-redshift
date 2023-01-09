@@ -366,25 +366,21 @@ def sync_table(connection, catalog_entry, state, limit):
         elif replication_key is not None:
             select += ' ORDER BY {} ASC'.format(replication_key)
 
-        if limit > 0:
-            select += ' LIMIT %(limit)s OFFSET %(offset)s '
+        if limit:
+            select += ' LIMIT %(limit)s OFFSET %(offset)s'
             params['limit'] = limit
             params['offset'] = 0
 
-        while True:
-            time_extracted = utils.now()
-            query_string = cursor.mogrify(select, params)
-            LOGGER.info('Running {}'.format(query_string))
-            cursor.execute(select, params)
-            row = cursor.fetchone()
+        with metrics.record_counter(None) as counter:
+            counter.tags['database'] = catalog_entry.database
+            counter.tags['table'] = catalog_entry.table
             rows_saved = 0
+            time_extracted = utils.now()
+            more_records = True
 
-            if not row:
-                break
+            row = execute_query(cursor, select, params)
 
-            with metrics.record_counter(None) as counter:
-                counter.tags['database'] = catalog_entry.database
-                counter.tags['table'] = catalog_entry.table
+            while more_records:
                 while row:
                     counter.increment()
                     rows_saved += 1
@@ -399,16 +395,19 @@ def sync_table(connection, catalog_entry, state, limit):
                         state = singer.write_bookmark(state,
                                                       tap_stream_id,
                                                       'replication_key_value',
-                                                      record_message.record[
-                                                          replication_key])
+                                                      record_message.record[replication_key])
                     if rows_saved % 1000 == 0:
                         yield singer.StateMessage(value=copy.deepcopy(state))
                     row = cursor.fetchone()
 
-            if limit <= 0:
-                break
-
-            params['offset'] += params['limit']
+                if not limit:
+                    more_records = False
+                else:
+                    row = execute_query(cursor, select, params)
+                    if not row:
+                        more_records = False
+                    else:
+                        params['offset'] += params['limit']
 
         if not replication_key:
             yield activate_version_message
@@ -416,6 +415,14 @@ def sync_table(connection, catalog_entry, state, limit):
                                           'version', None)
 
         yield singer.StateMessage(value=copy.deepcopy(state))
+
+
+def execute_query(cursor, select, params):
+    query_string = cursor.mogrify(select, params)
+    LOGGER.info('Running {}'.format(query_string))
+    cursor.execute(select, params)
+    row = cursor.fetchone()
+    return row
 
 
 def generate_messages(conn, db_name, db_schema, catalog, state, limit):
@@ -528,7 +535,7 @@ def main_impl():
     connection = open_connection(args.config)
     db_schema = args.config.get('schema', 'public')
     db_name = args.config.get('dbname', 'dev')
-    limit = args.config.get('limit_rows_per_batch', -1)
+    limit = args.config.get('limit_rows_per_batch', None)
     if args.discover:
         do_discover(connection, db_name, db_schema)
     elif args.catalog:

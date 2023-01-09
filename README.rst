@@ -35,6 +35,7 @@ The json file requires the following attributes;
 And an optional attribute;
 
 * ``schema``
+* ``limit_rows_per_batch``
 
 Example:
 
@@ -47,7 +48,8 @@ Example:
         "user": "REDSHIFT_USER",
         "password": "REDSHIFT_PASSWORD",
         "start_date": "REDSHIFT_START_DATE",
-        "schema": "REDSHIFT_SCHEMA"
+        "schema": "REDSHIFT_SCHEMA",
+        "limit_rows_per_batch": "REDSHIFT_LIMIT_ROWS_PER_BATCH"
     }
 
 
@@ -216,6 +218,11 @@ Example (paired with ``target-datadotworld``)
 
     tap-redshift -c config.json --catalog catalog.json | target-datadotworld -c config-dw.json
 
+.. note::
+
+    If your table is too big to fit at once where the extractor is running, you should consider using the ``limit_rows_per_batch``
+    that limits the number of rows extracted in a single query. This option uses the LIMIT and OFFSET options to extract
+    the same number of rows for each query until there is no more data to extract.
 
 Step 4: Sync your data
 ----------------------
