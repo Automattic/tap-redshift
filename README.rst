@@ -220,7 +220,7 @@ Example (paired with ``target-datadotworld``)
 
 .. note::
 
-    If your table is too big to fit at once where the extractor is running, you should consider using the ``limit_rows_per_batch``
+    If your table is too big to fit in memory at once where the extractor is running, you should consider using the ``limit_rows_per_batch``
     that limits the number of rows extracted in a single query. This option uses the LIMIT and OFFSET options to extract
     the same number of rows for each query until there is no more data to extract.
 
