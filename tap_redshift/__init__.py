@@ -403,11 +403,11 @@ def sync_table(connection, catalog_entry, state, limit):
                 if not limit:
                     more_records = False
                 else:
+                    params['offset'] += params['limit']
                     row = execute_query(cursor, select, params)
                     if not row:
                         more_records = False
-                    else:
-                        params['offset'] += params['limit']
+
 
         if not replication_key:
             yield activate_version_message
