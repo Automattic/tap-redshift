@@ -360,8 +360,8 @@ def sync_table(connection, catalog_entry, state, limit, include_null):
                 replication_key_value = pendulum.parse(replication_key_value)
 
             select += f' WHERE {replication_key} >= %(replication_key_value)s '
-            LOGGER.info(f"include null: {include_null}, replication_key_value: {replication_key_value}, start_date: {start_date}")
-            if include_null and replication_key_value == start_date:
+            LOGGER.info(f"include null: {include_null}, replication_key_value: {replication_key_value}, start_date: {formatted_start_date.isoformat()}")
+            if include_null and replication_key_value == formatted_start_date.isoformat():
                 select += f'OR {replication_key} IS NULL '
             select += f'ORDER BY {replication_key} ASC NULLS FIRST'
             params['replication_key_value'] = replication_key_value
