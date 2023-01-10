@@ -27,6 +27,7 @@ import sys
 import simplejson as json
 
 import psycopg2
+from psycopg2 import errors
 import singer
 import singer.metrics as metrics
 from singer import metadata
@@ -420,7 +421,11 @@ def sync_table(connection, catalog_entry, state, limit):
 def execute_query(cursor, select, params):
     query_string = cursor.mogrify(select, params)
     LOGGER.info('Running {}'.format(query_string))
-    cursor.execute(select, params)
+    try:
+        cursor.execute(select, params)
+    except errors.InternalError_ as e:
+        LOGGER.error(f'Error during executing query ({e.pgerror}) it will retry.')
+        cursor.execute(select, params)
     row = cursor.fetchone()
     return row
 
