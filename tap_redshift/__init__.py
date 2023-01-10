@@ -362,7 +362,6 @@ def sync_table(connection, catalog_entry, state, limit, include_null):
                 replication_key_value = pendulum.parse(replication_key_value)
 
             select += f' WHERE {replication_key} >= %(replication_key_value)s '
-            LOGGER.info(f"include null: {include_null}, replication_key_value: {replication_key_value}, start_date: {formatted_start_date.isoformat()}, is_first_extraction: {is_first_extraction}")
             if include_null and is_first_extraction:
                 select += f'OR {replication_key} IS NULL '
             select += f'ORDER BY {replication_key} ASC NULLS FIRST'
@@ -412,7 +411,6 @@ def sync_table(connection, catalog_entry, state, limit, include_null):
                     row = execute_query(cursor, select, params)
                     if not row:
                         more_records = False
-
 
         if not replication_key:
             yield activate_version_message
