@@ -297,6 +297,7 @@ def sync_table(connection, catalog_entry, state, limit, include_null):
     columns = list(catalog_entry.schema.properties.keys())
     start_date = CONFIG.get('start_date')
     formatted_start_date = None
+    is_first_extraction = False
 
     if not columns:
         LOGGER.warning(
@@ -352,6 +353,7 @@ def sync_table(connection, catalog_entry, state, limit, include_null):
                 tap_stream_id,
                 'replication_key_value'
             ) or formatted_start_date.isoformat()
+            is_first_extraction = replication_key_value == formatted_start_date.isoformat()
 
         if replication_key_value is not None:
             entry_schema = catalog_entry.schema
@@ -360,8 +362,8 @@ def sync_table(connection, catalog_entry, state, limit, include_null):
                 replication_key_value = pendulum.parse(replication_key_value)
 
             select += f' WHERE {replication_key} >= %(replication_key_value)s '
-            LOGGER.info(f"include null: {include_null}, replication_key_value: {replication_key_value}, start_date: {formatted_start_date.isoformat()}")
-            if include_null and replication_key_value == formatted_start_date.isoformat():
+            LOGGER.info(f"include null: {include_null}, replication_key_value: {replication_key_value}, start_date: {formatted_start_date.isoformat()}, is_first_extraction: {is_first_extraction}")
+            if include_null and is_first_extraction:
                 select += f'OR {replication_key} IS NULL '
             select += f'ORDER BY {replication_key} ASC NULLS FIRST'
             params['replication_key_value'] = replication_key_value
