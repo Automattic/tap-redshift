@@ -438,7 +438,7 @@ def execute_query(connection, cursor, select, params):
     query_string = cursor.mogrify(select, params)
     LOGGER.info('Running {}'.format(query_string))
     try:
-        cursor.execute(cursor.execute(select, params))
+        cursor.execute(select, params)
     except Exception as e:
         LOGGER.error(f'Failure during query: {str(e)}')
         LOGGER.info('Trying to reconnect')
