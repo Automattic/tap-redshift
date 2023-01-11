@@ -437,7 +437,14 @@ def execute_query(connection, cursor, select, params):
         cursor = connection.cursor()
     query_string = cursor.mogrify(select, params)
     LOGGER.info('Running {}'.format(query_string))
-    cursor.execute(select, params)
+    try:
+        cursor.execute(cursor.execute(select, params))
+    except Exception as e:
+        LOGGER.error(f'Failure during query: {str(e)}')
+        LOGGER.info('Trying to reconnect')
+        conn = open_connection(CONFIG)
+        cursor = conn.cursor()
+        cursor.execute(select, params)
     row = cursor.fetchone()
     return row, cursor
 
