@@ -390,7 +390,7 @@ def sync_table(connection, catalog_entry, state, limit, default_value_replicatio
         time_extracted = utils.now()
         more_records = True
 
-        row, cursor = execute_query(connection, None, select, params)
+        row, cursor, connection = execute_query(connection, None, select, params)
 
         while more_records:
             while row:
@@ -416,7 +416,7 @@ def sync_table(connection, catalog_entry, state, limit, default_value_replicatio
                 more_records = False
             else:
                 params['offset'] += params['limit']
-                row, cursor = execute_query(connection, cursor, select, params)
+                row, cursor, connection = execute_query(connection, cursor, select, params)
                 if not row:
                     more_records = False
 
@@ -442,11 +442,11 @@ def execute_query(connection, cursor, select, params):
     except Exception as e:
         LOGGER.error(f'Failure during query: {str(e)}')
         LOGGER.info('Trying to reconnect')
-        conn = open_connection(CONFIG)
-        cursor = conn.cursor()
+        connection = open_connection(CONFIG)
+        cursor = connection.cursor()
         cursor.execute(select, params)
     row = cursor.fetchone()
-    return row, cursor
+    return row, cursor, connection
 
 
 def generate_messages(conn, db_name, db_schema, catalog, state, limit, default_value_replication_column):
