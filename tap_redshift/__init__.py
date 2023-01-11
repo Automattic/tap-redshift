@@ -293,11 +293,10 @@ def row_to_record(catalog_entry, version, row, columns, time_extracted):
         time_extracted=time_extracted)
 
 
-def sync_table(connection, catalog_entry, state, limit, include_null):
+def sync_table(connection, catalog_entry, state, limit, default_value_replication_column):
     columns = list(catalog_entry.schema.properties.keys())
     start_date = CONFIG.get('start_date')
     formatted_start_date = None
-    is_first_extraction = False
 
     if not columns:
         LOGGER.warning(
@@ -310,17 +309,16 @@ def sync_table(connection, catalog_entry, state, limit, include_null):
     with connection.cursor() as cursor:
         schema, table = catalog_entry.table.split('.')
         database = catalog_entry.database
-        select = 'SELECT {} FROM {}.{}.{}'.format(
-            ','.join('"{}"'.format(c) for c in columns),
-            '"{}"'.format(database),
-            '"{}"'.format(schema),
-            '"{}"'.format(table))
+        columns_dict = {c: f'"{c}"' for c in columns}
+        select = 'SELECT {} FROM {}.{}.{}'
         params = {}
 
         if start_date is not None:
             formatted_start_date = datetime.datetime.strptime(
                 start_date, '%Y-%m-%dT%H:%M:%SZ').astimezone()
 
+        extra_order_by_columns = metadata.to_map(catalog_entry.metadata).get(
+            (), {}).get('extra-order-by-columns', None)
         replication_key = metadata.to_map(catalog_entry.metadata).get(
             (), {}).get('replication-key')
         replication_key_value = None
@@ -353,7 +351,14 @@ def sync_table(connection, catalog_entry, state, limit, include_null):
                 tap_stream_id,
                 'replication_key_value'
             ) or formatted_start_date.isoformat()
-            is_first_extraction = replication_key_value == formatted_start_date.isoformat()
+            if default_value_replication_column:
+                columns_dict[replication_key] = f'COALESCE("{replication_key}", "{default_value_replication_column}") as {replication_key}'
+
+        select = select.format(
+            ','.join(columns_dict.values()),
+            '"{}"'.format(database),
+            '"{}"'.format(schema),
+            '"{}"'.format(table))
 
         if replication_key_value is not None:
             entry_schema = catalog_entry.schema
@@ -361,14 +366,16 @@ def sync_table(connection, catalog_entry, state, limit, include_null):
             if entry_schema.properties[replication_key].format == 'date-time':
                 replication_key_value = pendulum.parse(replication_key_value)
 
-            select += f' WHERE {replication_key} >= %(replication_key_value)s '
-            if include_null and is_first_extraction:
-                select += f'OR {replication_key} IS NULL '
-            select += f'ORDER BY {replication_key} ASC NULLS FIRST'
+            select += f' WHERE {columns_dict[replication_key].split(" as ")[0]} >= %(replication_key_value)s '
+            order_by_columns = f'{replication_key},{extra_order_by_columns}' \
+                if extra_order_by_columns else replication_key
+            select += f'ORDER BY {order_by_columns} ASC '
             params['replication_key_value'] = replication_key_value
 
         elif replication_key is not None:
-            select += ' ORDER BY {} ASC NULLS FIRST'.format(replication_key)
+            order_by_columns = f'{replication_key},{extra_order_by_columns}' \
+                if extra_order_by_columns else replication_key
+            select += f' ORDER BY {order_by_columns} ASC '
 
         if limit:
             select += ' LIMIT %(limit)s OFFSET %(offset)s'
@@ -428,7 +435,7 @@ def execute_query(cursor, select, params):
     return row
 
 
-def generate_messages(conn, db_name, db_schema, catalog, state, limit, include_null):
+def generate_messages(conn, db_name, db_schema, catalog, state, limit, default_value_replication_column):
     catalog = resolve.resolve_catalog(discover_catalog(conn, db_name, db_schema),
                                       catalog, state)
 
@@ -436,7 +443,6 @@ def generate_messages(conn, db_name, db_schema, catalog, state, limit, include_n
         state = singer.set_currently_syncing(state,
                                              catalog_entry.tap_stream_id)
         catalog_md = metadata.to_map(catalog_entry.metadata)
-        LOGGER.info(f'Metadata {catalog_md}')
 
         if catalog_md.get((), {}).get('is-view'):
             key_properties = catalog_md.get((), {}).get('view-key-properties')
@@ -458,7 +464,7 @@ def generate_messages(conn, db_name, db_schema, catalog, state, limit, include_n
         with metrics.job_timer('sync_table') as timer:
             timer.tags['database'] = catalog_entry.database
             timer.tags['table'] = catalog_entry.table
-            for message in sync_table(conn, catalog_entry, state, limit, include_null):
+            for message in sync_table(conn, catalog_entry, state, limit, default_value_replication_column):
                 yield message
 
     # If we get here, we've finished processing all the streams, so clear
@@ -473,9 +479,9 @@ def coerce_datetime(o):
     raise TypeError("Type {} is not serializable".format(type(o)))
 
 
-def do_sync(conn, db_name, db_schema, catalog, state, limit, include_null):
+def do_sync(conn, db_name, db_schema, catalog, state, limit, default_value_replication_column):
     LOGGER.info("Starting Redshift sync")
-    for message in generate_messages(conn, db_name, db_schema, catalog, state, limit, include_null):
+    for message in generate_messages(conn, db_name, db_schema, catalog, state, limit, default_value_replication_column):
         sys.stdout.write(json.dumps(message.asdict(),
                          default=coerce_datetime,
                          use_decimal=True) + '\n')
@@ -540,16 +546,16 @@ def main_impl():
     db_schema = args.config.get('schema', 'public')
     db_name = args.config.get('dbname', 'dev')
     limit = args.config.get('limit_rows_per_batch')
-    include_null = args.config.get('include_null', True)
+    default_value_replication_column = args.config.get('default_value_replication_column')
     if args.discover:
         do_discover(connection, db_name, db_schema)
     elif args.catalog:
         state = build_state(args.state, args.catalog)
-        do_sync(connection, db_name, db_schema, args.catalog, state, limit, include_null)
+        do_sync(connection, db_name, db_schema, args.catalog, state, limit, default_value_replication_column)
     elif args.properties:
         catalog = Catalog.from_dict(args.properties)
         state = build_state(args.state, catalog)
-        do_sync(connection, db_name, db_schema, catalog, state, limit, include_null)
+        do_sync(connection, db_name, db_schema, catalog, state, limit, default_value_replication_column)
     else:
         LOGGER.info("No properties were selected")
 
