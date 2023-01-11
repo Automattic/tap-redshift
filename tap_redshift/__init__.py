@@ -352,7 +352,7 @@ def sync_table(connection, catalog_entry, state, limit, default_value_replicatio
                 'replication_key_value'
             ) or formatted_start_date.isoformat()
             if default_value_replication_column:
-                columns_dict[replication_key] = f'COALESCE("{replication_key}", "{default_value_replication_column}") as {replication_key}'
+                columns_dict[replication_key] = f'COALESCE("{replication_key}", \'{default_value_replication_column}\') as {replication_key}'
 
         select = select.format(
             ','.join(columns_dict.values()),
