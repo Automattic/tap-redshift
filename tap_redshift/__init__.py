@@ -432,9 +432,9 @@ def sync_table(connection, catalog_entry, state, limit, default_value_replicatio
 
 
 def execute_query(connection, cursor, select, params):
-    if not cursor or (cursor and not cursor.closed):
+    if cursor and not cursor.closed:
         cursor.close()
-        cursor = connection.cursor()
+    cursor = connection.cursor()
     query_string = cursor.mogrify(select, params)
     LOGGER.info('Running {}'.format(query_string))
     try:
