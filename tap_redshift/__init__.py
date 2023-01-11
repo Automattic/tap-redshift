@@ -436,6 +436,7 @@ def generate_messages(conn, db_name, db_schema, catalog, state, limit, include_n
         state = singer.set_currently_syncing(state,
                                              catalog_entry.tap_stream_id)
         catalog_md = metadata.to_map(catalog_entry.metadata)
+        LOGGER.info(f'Metadata {catalog_md}')
 
         if catalog_md.get((), {}).get('is-view'):
             key_properties = catalog_md.get((), {}).get('view-key-properties')
