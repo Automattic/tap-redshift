@@ -49,7 +49,7 @@ Example:
         "password": "REDSHIFT_PASSWORD",
         "start_date": "REDSHIFT_START_DATE",
         "schema": "REDSHIFT_SCHEMA",
-        "limit_rows_per_batch": "REDSHIFT_LIMIT_ROWS_PER_BATCH"
+        "limit_rows_per_batch": "REDSHIFT_LIMIT_ROWS_PER_BATCH",
     }
 
 
@@ -223,6 +223,10 @@ Example (paired with ``target-datadotworld``)
     If your table is too big to fit in memory at once where the extractor is running, you should consider using the ``limit_rows_per_batch``
     that limits the number of rows extracted in a single query. This option uses the LIMIT and OFFSET options to extract
     the same number of rows for each query until there is no more data to extract.
+
+    When using the ``limit_rows_per_batch`` you should consider using the ``extra-order-by-columns`` to add more columns
+    (e.g. ``"col1"`` or ``"col1,col2,col3"``) during the ordination step to avoid the random behavior for rows with the same ``replication-key``
+    which could cause ingesting duplicate records and also miss some records.
 
 Step 4: Sync your data
 ----------------------
