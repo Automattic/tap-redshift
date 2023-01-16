@@ -224,7 +224,7 @@ Example (paired with ``target-datadotworld``)
     that limits the number of rows extracted in a single query. This option uses the LIMIT and OFFSET options to extract
     the same number of rows for each query until there is no more data to extract.
 
-    When using the ``limit_rows_per_batch`` you should consider using the ``extra-order-by-columns`` to add more columns
+    When using the ``limit_rows_per_batch`` you should consider using the ``extra-order-by-columns`` (in Metadata) to add more columns
     (e.g. ``"col1"`` or ``"col1,col2,col3"``) during the ordination step to avoid the random behavior for rows with the same ``replication-key``
     which could cause ingesting duplicate records and also miss some records.
 
