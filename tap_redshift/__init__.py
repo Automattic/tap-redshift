@@ -293,7 +293,7 @@ def row_to_record(catalog_entry, version, row, columns, time_extracted):
         time_extracted=time_extracted)
 
 
-def sync_table(connection, catalog_entry, state):
+def sync_table(connection, catalog_entry, state, limit):
     columns = list(catalog_entry.schema.properties.keys())
     start_date = CONFIG.get('start_date')
     formatted_start_date = None
@@ -306,76 +306,87 @@ def sync_table(connection, catalog_entry, state):
 
     tap_stream_id = catalog_entry.tap_stream_id
     LOGGER.info('Beginning sync for {} table'.format(tap_stream_id))
-    with connection.cursor() as cursor:
-        schema, table = catalog_entry.table.split('.')
-        database = catalog_entry.database
-        select = 'SELECT {} FROM {}.{}.{}'.format(
-            ','.join('"{}"'.format(c) for c in columns),
-            '"{}"'.format(database),
-            '"{}"'.format(schema),
-            '"{}"'.format(table))
-        params = {}
 
-        if start_date is not None:
-            formatted_start_date = datetime.datetime.strptime(
-                start_date, '%Y-%m-%dT%H:%M:%SZ').astimezone()
+    schema, table = catalog_entry.table.split('.')
+    database = catalog_entry.database
+    select = 'SELECT {} FROM {}.{}.{}'.format(
+        ','.join(columns),
+        '"{}"'.format(database),
+        '"{}"'.format(schema),
+        '"{}"'.format(table))
+    params = {}
 
-        replication_key = metadata.to_map(catalog_entry.metadata).get(
-            (), {}).get('replication-key')
-        replication_key_value = None
-        bookmark_is_empty = state.get('bookmarks', {}).get(
-            tap_stream_id) is None
-        stream_version = get_stream_version(tap_stream_id, state)
-        state = singer.write_bookmark(
+    if start_date is not None:
+        formatted_start_date = datetime.datetime.strptime(
+            start_date, '%Y-%m-%dT%H:%M:%SZ').astimezone()
+
+    extra_order_by_columns = metadata.to_map(catalog_entry.metadata).get(
+        (), {}).get('extra-order-by-columns', None)
+    replication_key = metadata.to_map(catalog_entry.metadata).get(
+        (), {}).get('replication-key')
+    replication_key_value = None
+    bookmark_is_empty = state.get('bookmarks', {}).get(
+        tap_stream_id) is None
+    stream_version = get_stream_version(tap_stream_id, state)
+    state = singer.write_bookmark(
+        state,
+        tap_stream_id,
+        'version',
+        stream_version
+    )
+    activate_version_message = singer.ActivateVersionMessage(
+        stream=catalog_entry.stream,
+        version=stream_version
+    )
+
+    # If there's a replication key, we want to emit an ACTIVATE_VERSION
+    # message at the beginning so the records show up right away. If
+    # there's no bookmark at all for this stream, assume it's the very
+    # first replication. That is, clients have never seen rows for this
+    # stream before, so they can immediately acknowledge the present
+    # version.
+    if replication_key or bookmark_is_empty:
+        yield activate_version_message
+
+    if replication_key:
+        replication_key_value = singer.get_bookmark(
             state,
             tap_stream_id,
-            'version',
-            stream_version
-        )
-        activate_version_message = singer.ActivateVersionMessage(
-            stream=catalog_entry.stream,
-            version=stream_version
-        )
+            'replication_key_value'
+        ) or formatted_start_date.isoformat()
 
-        # If there's a replication key, we want to emit an ACTIVATE_VERSION
-        # message at the beginning so the records show up right away. If
-        # there's no bookmark at all for this stream, assume it's the very
-        # first replication. That is, clients have never seen rows for this
-        # stream before, so they can immediately acknowledge the present
-        # version.
-        if replication_key or bookmark_is_empty:
-            yield activate_version_message
+    if replication_key_value is not None:
+        entry_schema = catalog_entry.schema
 
-        if replication_key:
-            replication_key_value = singer.get_bookmark(
-                state,
-                tap_stream_id,
-                'replication_key_value'
-            ) or formatted_start_date.isoformat()
+        if entry_schema.properties[replication_key].format == 'date-time':
+            replication_key_value = pendulum.parse(replication_key_value)
 
-        if replication_key_value is not None:
-            entry_schema = catalog_entry.schema
+        select += f' WHERE {replication_key} >= %(replication_key_value)s '
+        order_by_columns = f'{replication_key},{extra_order_by_columns}' \
+            if extra_order_by_columns else replication_key
+        select += f'ORDER BY {order_by_columns} ASC '
+        params['replication_key_value'] = replication_key_value
 
-            if entry_schema.properties[replication_key].format == 'date-time':
-                replication_key_value = pendulum.parse(replication_key_value)
+    elif replication_key is not None:
+        order_by_columns = f'{replication_key},{extra_order_by_columns}' \
+            if extra_order_by_columns else replication_key
+        select += f' ORDER BY {order_by_columns} ASC '
 
-            select += ' WHERE {} >= %(replication_key_value)s ORDER BY {} ' \
-                      'ASC'.format(replication_key, replication_key)
-            params['replication_key_value'] = replication_key_value
+    if limit:
+        select += ' LIMIT %(limit)s OFFSET %(offset)s'
+        params['limit'] = limit
+        params['offset'] = 0
 
-        elif replication_key is not None:
-            select += ' ORDER BY {} ASC'.format(replication_key)
-
-        time_extracted = utils.now()
-        query_string = cursor.mogrify(select, params)
-        LOGGER.info('Running {}'.format(query_string))
-        cursor.execute(select, params)
-        row = cursor.fetchone()
+    with metrics.record_counter(None) as counter:
+        counter.tags['database'] = catalog_entry.database
+        counter.tags['table'] = catalog_entry.table
         rows_saved = 0
+        time_extracted = utils.now()
+        more_records = True
 
-        with metrics.record_counter(None) as counter:
-            counter.tags['database'] = catalog_entry.database
-            counter.tags['table'] = catalog_entry.table
+        row, cursor, connection = execute_query(connection, None, select, params)
+
+        while more_records:
             while row:
                 counter.increment()
                 rows_saved += 1
@@ -386,25 +397,53 @@ def sync_table(connection, catalog_entry, state):
                                                time_extracted)
                 yield record_message
 
-                if replication_key is not None:
+                if replication_key is not None and record_message.record[replication_key] is not None:
                     state = singer.write_bookmark(state,
                                                   tap_stream_id,
                                                   'replication_key_value',
-                                                  record_message.record[
-                                                      replication_key])
+                                                  record_message.record[replication_key])
                 if rows_saved % 1000 == 0:
                     yield singer.StateMessage(value=copy.deepcopy(state))
                 row = cursor.fetchone()
 
-        if not replication_key:
-            yield activate_version_message
-            state = singer.write_bookmark(state, catalog_entry.tap_stream_id,
-                                          'version', None)
+            if not limit:
+                more_records = False
+            else:
+                params['offset'] += params['limit']
+                row, cursor, connection = execute_query(connection, cursor, select, params)
+                if not row:
+                    more_records = False
 
-        yield singer.StateMessage(value=copy.deepcopy(state))
+    if cursor and not cursor.closed:
+        cursor.close()
+
+    if not replication_key:
+        yield activate_version_message
+        state = singer.write_bookmark(state, catalog_entry.tap_stream_id,
+                                      'version', None)
+
+    yield singer.StateMessage(value=copy.deepcopy(state))
 
 
-def generate_messages(conn, db_name, db_schema, catalog, state):
+def execute_query(connection, cursor, select, params):
+    if cursor and not cursor.closed:
+        cursor.close()
+    cursor = connection.cursor()
+    query_string = cursor.mogrify(select, params)
+    LOGGER.info('Running {}'.format(query_string))
+    try:
+        cursor.execute(select, params)
+    except Exception as e:
+        LOGGER.error(f'Failure during query: {str(e)}')
+        LOGGER.info('Trying to reconnect')
+        connection = open_connection(CONFIG)
+        cursor = connection.cursor()
+        cursor.execute(select, params)
+    row = cursor.fetchone()
+    return row, cursor, connection
+
+
+def generate_messages(conn, db_name, db_schema, catalog, state, limit):
     catalog = resolve.resolve_catalog(discover_catalog(conn, db_name, db_schema),
                                       catalog, state)
 
@@ -433,7 +472,7 @@ def generate_messages(conn, db_name, db_schema, catalog, state):
         with metrics.job_timer('sync_table') as timer:
             timer.tags['database'] = catalog_entry.database
             timer.tags['table'] = catalog_entry.table
-            for message in sync_table(conn, catalog_entry, state):
+            for message in sync_table(conn, catalog_entry, state, limit):
                 yield message
 
     # If we get here, we've finished processing all the streams, so clear
@@ -448,9 +487,9 @@ def coerce_datetime(o):
     raise TypeError("Type {} is not serializable".format(type(o)))
 
 
-def do_sync(conn, db_name, db_schema, catalog, state):
+def do_sync(conn, db_name, db_schema, catalog, state, limit):
     LOGGER.info("Starting Redshift sync")
-    for message in generate_messages(conn, db_name, db_schema, catalog, state):
+    for message in generate_messages(conn, db_name, db_schema, catalog, state, limit):
         sys.stdout.write(json.dumps(message.asdict(),
                          default=coerce_datetime,
                          use_decimal=True) + '\n')
@@ -514,15 +553,16 @@ def main_impl():
     connection = open_connection(args.config)
     db_schema = args.config.get('schema', 'public')
     db_name = args.config.get('dbname', 'dev')
+    limit = args.config.get('limit_rows_per_batch')
     if args.discover:
         do_discover(connection, db_name, db_schema)
     elif args.catalog:
         state = build_state(args.state, args.catalog)
-        do_sync(connection, db_name, db_schema, args.catalog, state)
+        do_sync(connection, db_name, db_schema, args.catalog, state, limit)
     elif args.properties:
         catalog = Catalog.from_dict(args.properties)
         state = build_state(args.state, catalog)
-        do_sync(connection, db_name, db_schema, catalog, state)
+        do_sync(connection, db_name, db_schema, catalog, state, limit)
     else:
         LOGGER.info("No properties were selected")
 
