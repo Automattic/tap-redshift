@@ -370,7 +370,7 @@ def sync_table(connection, catalog_entry, state, limit):
     if extra_order_by_columns:
         order_by_columns.append(extra_order_by_columns)
     if order_by_columns:
-        select += f' ORDER BY {",".join(order_by_columns)} ASC '
+        select += f' ORDER BY {",".join(order_by_columns)} '
 
     if limit:
         select += ' LIMIT %(limit)s OFFSET %(offset)s'
