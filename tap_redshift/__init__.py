@@ -362,15 +362,15 @@ def sync_table(connection, catalog_entry, state, limit):
             replication_key_value = pendulum.parse(replication_key_value)
 
         select += f' WHERE {replication_key} >= %(replication_key_value)s '
-        order_by_columns = f'{replication_key},{extra_order_by_columns}' \
-            if extra_order_by_columns else replication_key
-        select += f'ORDER BY {order_by_columns} ASC '
         params['replication_key_value'] = replication_key_value
 
-    elif replication_key is not None:
-        order_by_columns = f'{replication_key},{extra_order_by_columns}' \
-            if extra_order_by_columns else replication_key
-        select += f' ORDER BY {order_by_columns} ASC '
+    order_by_columns = []
+    if replication_key:
+        order_by_columns.append(replication_key)
+    if extra_order_by_columns:
+        order_by_columns.append(extra_order_by_columns)
+    if order_by_columns:
+        select += f' ORDER BY {",".join(order_by_columns)} '
 
     if limit:
         select += ' LIMIT %(limit)s OFFSET %(offset)s'
