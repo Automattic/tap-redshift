@@ -501,7 +501,7 @@ def do_sync(conn, db_name, db_schema, catalog, state, limit):
 def build_state(raw_state, catalog):
     LOGGER.info('Building State from raw state {}'.format(raw_state))
 
-    state = {}
+    state = raw_state
 
     currently_syncing = singer.get_currently_syncing(raw_state)
     if currently_syncing:
