@@ -477,6 +477,7 @@ def generate_messages(conn, db_name, db_schema, catalog, state, limit):
 
     # If we get here, we've finished processing all the streams, so clear
     # currently_syncing from the state and emit a state message.
+    LOGGER.info(f'Last states: {state}')
     state = singer.set_currently_syncing(state, None)
     yield singer.StateMessage(value=copy.deepcopy(state))
 
