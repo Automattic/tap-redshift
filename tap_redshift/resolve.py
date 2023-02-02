@@ -100,8 +100,10 @@ def resolve_catalog(discovered, catalog, state):
     for catalog_entry in streams:
         discovered_table = discovered.get_stream(catalog_entry.tap_stream_id)
         if not discovered_table:
-            raise Exception(f'Database {catalog_entry.database} table {catalog_entry.table} '
-                            'selected but does not exist')
+            LOGGER.warning('Database {} table {} selected but does not exist'
+                           .format(catalog_entry.database,
+                                   catalog_entry.table))
+            continue
         selected = get_selected_properties(catalog_entry)
 
         # These are the columns we need to select
