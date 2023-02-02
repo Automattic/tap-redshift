@@ -211,6 +211,60 @@ def expected_catalog_from_db():
 
 
 @pytest.fixture()
+def incremental_catalog():
+    return Catalog.from_dict({
+        'streams': [
+            {
+                'database_name': 'FakeDB',
+                'table_name': 'table1',
+                'tap_stream_id': 'existing_stream',
+                'is_view': False,
+                'stream': 'category',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'id': {'type': 'integer', },
+                        'create_at': {'type': 'string', }
+                    }
+                },
+                'metadata': [
+                    {
+                        'breadcrumb': (),
+                        'metadata': {
+                            'replication-method': 'INCREMENTAL',
+                            'replication-key': 'create_at'
+                        }
+                    },
+                ]
+            },
+            {
+                'database_name': 'FakeDB',
+                'table_name': 'table2',
+                'tap_stream_id': 'included_stream',
+                'is_view': False,
+                'stream': 'category',
+                'schema': {
+                    'type': 'object',
+                    'properties': {
+                        'id': {'type': 'integer', },
+                        'updated_at': {'type': 'string', }
+                    }
+                },
+                'metadata': [
+                    {
+                        'breadcrumb': (),
+                        'metadata': {
+                            'replication-method': 'INCREMENTAL',
+                            'replication-key': 'updated_at'
+                        }
+                    },
+                ]
+            }
+        ]
+    })
+
+
+@pytest.fixture()
 def expected_catalog_discovered():
     return Catalog.from_dict({
         'streams': [{
