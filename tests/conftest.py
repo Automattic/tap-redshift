@@ -216,7 +216,7 @@ def incremental_catalog():
         'streams': [{
             'database_name': 'FakeDB',
             'table_name': 'category',
-            'tap_stream_id': 'dev-category',
+            'tap_stream_id': 'existing_stream',
             'is_view': False,
             'stream': 'category',
             'schema': {
@@ -243,7 +243,7 @@ def incremental_catalog():
             {
                 'database_name': 'FakeDB',
                 'table_name': 'category',
-                'tap_stream_id': 'dev-category2',
+                'tap_stream_id': 'included_stream',
                 'is_view': False,
                 'stream': 'category',
                 'schema': {

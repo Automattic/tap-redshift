@@ -60,14 +60,19 @@ class TestResolve(object):
         assert_that(get_selected_properties(entry), equal_to(expected))
 
     def test_build_state(self, incremental_catalog):
+        """
+        Test if the state is built correctly from the catalog and initial state:
+         - keeping the existing streams state even if they are not in the catalog anymore.
+         - adding the streams that are in the catalog but not in the state.
+         """
         initial_state = {'bookmarks':
-                             {'dev-category': {'replication_key': 'create_at', 'replication_key_value': '2022-01-01T00:00:00Z'},
+                             {'existing_stream': {'replication_key': 'create_at', 'replication_key_value': '2022-01-01T00:00:00Z'},
                               'non_existing_stream': {'replication_key': 'updated_at', 'replication_key_value': '2023-01-01T00:00:00Z'}}}
 
         expected_state = {'bookmarks':
-                              {'dev-category': {'replication_key': 'create_at', 'replication_key_value': '2022-01-01T00:00:00Z'},
+                              {'existing_stream': {'replication_key': 'create_at', 'replication_key_value': '2022-01-01T00:00:00Z'},
                                'non_existing_stream': {'replication_key': 'updated_at', 'replication_key_value': '2023-01-01T00:00:00Z'},
-                               'dev-category2': {'replication_key': 'updated_at', 'replication_key_value': None}}}
+                               'included_stream': {'replication_key': 'updated_at', 'replication_key_value': None}}}
 
         state = tap_redshift.build_state(initial_state, incremental_catalog)
 
