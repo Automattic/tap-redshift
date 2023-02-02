@@ -215,19 +215,15 @@ def incremental_catalog():
     return Catalog.from_dict({
         'streams': [{
             'database_name': 'FakeDB',
-            'table_name': 'category',
+            'table_name': 'table1',
             'tap_stream_id': 'existing_stream',
             'is_view': False,
             'stream': 'category',
             'schema': {
                 'type': 'object',
                 'properties': {
-                    'id': {
-                        'type': 'integer',
-                    },
-                    'create_at': {
-                        'type': 'string',
-                    }
+                    'id': {'type': 'integer',},
+                    'create_at': {'type': 'string',}
                 }
             },
             'metadata': [
@@ -242,19 +238,15 @@ def incremental_catalog():
         },
             {
                 'database_name': 'FakeDB',
-                'table_name': 'category',
+                'table_name': 'table2',
                 'tap_stream_id': 'included_stream',
                 'is_view': False,
                 'stream': 'category',
                 'schema': {
                     'type': 'object',
                     'properties': {
-                        'id': {
-                            'type': 'integer',
-                        },
-                        'updated_at': {
-                            'type': 'string',
-                        }
+                        'id': {'type': 'integer',},
+                        'updated_at': {'type': 'string',}
                     }
                 },
                 'metadata': [
