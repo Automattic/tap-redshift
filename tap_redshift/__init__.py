@@ -361,7 +361,7 @@ def sync_table(connection, catalog_entry, state, limit):
         if entry_schema.properties[replication_key].format == 'date-time':
             replication_key_value = pendulum.parse(replication_key_value)
 
-        select += f' WHERE {replication_key} >= %(replication_key_value)s '
+        select += f' WHERE COALESCE({replication_key}, \'1970-01-01T00:00:00.000\'::timestamptz) >= %(replication_key_value)s '
         params['replication_key_value'] = replication_key_value
 
     order_by_columns = []
