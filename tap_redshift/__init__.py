@@ -83,7 +83,7 @@ def discover_catalog(conn, db_name, db_schema):
         WHERE schema_name = '{db_schema}' and database_name = '{db_name}'
         """)
 
-    assert table_spec, "Table spec is empty, check the schema and database name and if table is visible to the user"
+    assert table_spec, "Table spec is empty, check the schema and database name and if table is visible to the user in SVV_ALL_TABLES metadata table"
 
     column_specs = select_all(
         conn,
